@@ -5,8 +5,20 @@ from openai import OpenAI
 import openai
 from datetime import datetime
 
+# Streamlit app code
+st.title('Analisi PDF Bilanci 📒')
 
+directory_path = st.text_input('Seleziona la cartella contentente i bilanci', '')
+question = st.text_area('Inserisci la domanda da porre', 'Sarebbe possibile ottenere un elenco dettagliato della distribuzione dei ricavi, suddiviso per categorie di attività? Vorrei avere informazioni più specifiche su come i ricavi sono ripartiti tra le varie attività o settori')
+assistant_id = st.text_input("Indicare l'Assistant ID", 'asst_tH6OUSI6c6QAS4eXwBnG80a0')
+api_key = st.text_input("Indicare Open AI Key")
 
+openai.organization = "org-ZCInae5ZEKOe41iOgJqcI0i1"
+openai.api_key = api_key
+
+client = OpenAI(
+  api_key=openai.api_key,  # this is also the default, it can be omitted
+)
 
 uploaded_files = st.file_uploader(
     "Seleziona i bilanci PDF da analizzare", 
@@ -122,8 +134,7 @@ def process_all_pdfs_to_dataframe(uploaded_files, question, assistantid, client)
     return df_results
 
 
-# Streamlit app code
-st.title('Analisi PDF Bilanci 📒')
+
 
 # Define a function to return a string containing the CSS to set the background image
 def get_background_image_css(image_url):
@@ -145,18 +156,6 @@ css_style = get_background_image_css(background_image_url)
 # Inject custom CSS with the background image into the Streamlit app
 st.markdown(css_style, unsafe_allow_html=True)
 
-
-directory_path = st.text_input('Seleziona la cartella contentente i bilanci', '')
-question = st.text_area('Inserisci la domanda da porre', 'Sarebbe possibile ottenere un elenco dettagliato della distribuzione dei ricavi, suddiviso per categorie di attività? Vorrei avere informazioni più specifiche su come i ricavi sono ripartiti tra le varie attività o settori')
-assistant_id = st.text_input("Indicare l'Assistant ID", 'asst_tH6OUSI6c6QAS4eXwBnG80a0')
-api_key = st.text_input("Indicare Open AI Key")
-
-openai.organization = "org-ZCInae5ZEKOe41iOgJqcI0i1"
-openai.api_key = api_key
-
-client = OpenAI(
-  api_key=openai.api_key,  # this is also the default, it can be omitted
-)
 
 # Function to get the current date and time
 def get_current_date_time():
