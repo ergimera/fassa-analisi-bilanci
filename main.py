@@ -1,12 +1,31 @@
 import streamlit as st
-import os
 import pandas as pd
-from openai import OpenAI
 import openai
 from datetime import datetime
+from openai import OpenAI
 
 # Streamlit app code
 st.title('Analisi PDF Bilanci 📒')
+
+# Set the URL of your background image
+background_image_url = 'https://i.ibb.co/r0tQHff/164506-dark-blue-texture-background-design-2.jpg'
+
+# Define a function to return a string containing the CSS to set the background image
+def get_background_image_css(image_url):
+    return f"""
+    <style>
+    .stApp {{
+        background-image: url("{image_url}");
+        background-size: cover;
+    }}
+    </style>
+    """
+
+# Call the function to get the CSS style string
+css_style = get_background_image_css(background_image_url)
+
+# Inject custom CSS with the background image into the Streamlit app
+st.markdown(css_style, unsafe_allow_html=True)
 
 question = st.text_area('Inserisci la domanda da porre', 'Sarebbe possibile ottenere un elenco dettagliato della distribuzione dei ricavi, suddiviso per categorie di attività? Vorrei avere informazioni più specifiche su come i ricavi sono ripartiti tra le varie attività o settori')
 assistant_id = st.text_input("Indicare l'Assistant ID", 'asst_tH6OUSI6c6QAS4eXwBnG80a0')
@@ -15,9 +34,7 @@ api_key = st.text_input("Indicare Open AI Key")
 openai.organization = "org-ZCInae5ZEKOe41iOgJqcI0i1"
 openai.api_key = api_key
 
-client = OpenAI(
-  api_key=openai.api_key,  # this is also the default, it can be omitted
-)
+client = OpenAI(api_key=api_key)
 
 uploaded_files = st.file_uploader(
     "Seleziona i bilanci PDF da analizzare", 
@@ -34,134 +51,74 @@ def process_question(file_object, question, assistantid, client):
     file_id = file.id
     
     # Create thread message
-    thread = client.beta.threads.create(
-        messages=[
-            {
-                "role": "user",
-                "content": question,
-                "file_ids": [file_id]
-            }
-        ]
+    thread = client.assistants.create_and_run(
+        model="davinci",
+        documents=[file_id],
+        user_question=question
     )
-    thread_id = thread.id
     
-    # Execute the run
-    run = client.beta.threads.runs.create(
-        thread_id=thread_id,
-        assistant_id=assistantid,
-        model="gpt-4-1106-preview",
-        tools=[{"type": "code_interpreter"}, {"type": "retrieval"}]
-    )
-    run_id = run.id
-    
-    # Retrieve the run
-    retrieved_run = client.beta.threads.runs.retrieve(
-        thread_id=thread_id,
-        run_id=run_id
-    )
-    # Wait for the run to complete
-    while True:
-        run = client.beta.threads.runs.retrieve(
-            thread_id=thread_id,
-            run_id=run_id
-        )
-        if run.status == "completed":
-            break
-        time.sleep(3)  # Wait for 3 seconds before checking again
-      
-    # Retrieve thread messages
-    thread_messages = client.beta.threads.messages.list(thread_id)
-    message_id = thread_messages.first_id  # Need to verify the attribute name for the first message ID
-
-    # Retrieve the message object
-    message = client.beta.threads.messages.retrieve(
-        thread_id=thread_id,
-        message_id=message_id
-    )
-
-    # Presuming that message.content is a list with text and annotations attributes
-    message_content = message.content[0].text
-    client.files.delete(file.id)
-
-    return message_content.value
-
-def process_all_pdfs_to_dataframe(uploaded_files, question, assistantid, client):
-    # Initialize the results list
-    results = []
-
-    # Loop through each uploaded file object
-    for uploaded_file in uploaded_files:
-        if uploaded_file.name.endswith(".pdf"):
-            # Process the uploaded file
-            response = process_question(uploaded_file, question, assistantid, client)
-
-            # Since processing is asynchronous, we may not receive the response immediately
-            if response is not None:
-                # We have a response; append to the results list
-                results.append({
-                    "File": uploaded_file.name,
-                    "Question": question,
-                    "Response": response
-                })
-            else:
-                # The response is not ready; append a placeholder indicating processing status
-                results.append({
-                    "File": uploaded_file.name,
-                    "Question": question,
-                    "Response": "Processing..."
-                })
-
-    # Convert the results list into a pandas DataFrame
-    df_results = pd.DataFrame(results)
-
-    # Return the DataFrame
-    return df_results
-
-
-# Define a function to return a string containing the CSS to set the background image
-def get_background_image_css(image_url):
-    return f"""
-    <style>
-    .stApp {{
-        background-image: url("{image_url}");
-        background-size: cover;
-    }}
-    </style>
-    """
-
-# Set the URL of your background image
-background_image_url = 'https://i.ibb.co/r0tQHff/164506-dark-blue-texture-background-design-2.jpg'
-
-# Call the function to get the CSS style string
-css_style = get_background_image_css(background_image_url)
-
-# Inject custom CSS with the background image into the Streamlit app
-st.markdown(css_style, unsafe_allow_html=True)
-
+    # Store the thread information for later retrieval in Streamlit's session state
+    return {'thread_id': thread.id, 'file_id': file_id, 'filename': file_object.name}
 
 # Streamlit control for initiating PDF processing
 if st.button('Process PDFs'):
     if uploaded_files and question and assistant_id and api_key:
-        client = OpenAI(api_key=api_key)
-        with st.spinner('Processing...'):
-            df_responses = process_all_pdfs_to_dataframe(uploaded_files, question, assistant_id, client)
-            st.dataframe(df_responses)
-            # Save responses to an Excel sheet
-            current_datetime = datetime.now().strftime('%Y_%m_%d_%H-%M-%S')
-            file_name = f'responses_{current_datetime}.xlsx'
-            df_responses.to_excel(file_name, index=False)
-            st.success(f'Results saved to {file_name}')
-            # Provide a download link for the Excel file
-            with open(file_name, "rb") as file:
-                st.download_button(
-                    label="Download Excel file",
-                    data=file,
-                    file_name=file_name,
-                    mime="application/vnd.ms-excel"
-                )
+        # Initialize an empty list to store responses for each file
+        pending_runs = []
+        
+        # Update client with the provided API key
+        openai.api_key = api_key
+        client = OpenAI(api_key=openai.api_key)
+        
+        # Process each file and store pending runs information
+        for uploaded_file in uploaded_files:
+            if uploaded_file.name.endswith(".pdf"):
+                run_info = process_question(uploaded_file, question, assistant_id, client)
+                if run_info is not None:
+                    pending_runs.append(run_info)
+        
+        # Check if there are any pending runs to process
+        if pending_runs:
+            # Store the list of pending runs in the session state
+            st.session_state['pending_runs'] = pending_runs
+            st.session_state['results'] = []
+            # Indicate to the user that files are being processed
+            st.success('Processing started. Click on "Check Status" to get updates.')
+        else:
+            st.error('No valid PDF files found. Please upload PDF files and try again.')
     else:
         st.error('Please fill out all fields and upload at least one PDF file before processing.')
 
-# Rerun the app to update the status of the processing
+# Define a function that checks the status of a pending run and retrieves the results
+def check_status_and_get_results():
+    if 'pending_runs' in st.session_state:
+        for run_info in st.session_state['pending_runs']:
+            if 'response' not in run_info:
+                # Grab the status/response of the run with OpenAI's retrieve API call
+                response = client.assistants.retrieve(run_info['thread_id'])
+                if response['status'] == 'succeeded':
+                    run_info['response'] = response['answers'][0]['text']
+                    st.session_state['results'].append(run_info)
+                # The else case is implicit and we just wait more
+
+# Streamlit control for checking the status of PDF processing
 if st.button('Check Status'):
-    st.experimental_rerun()
+    check_status_and_get_results()
+    if not st.session_state['pending_runs']:
+        st.success('All files have been processed.')
+        # Convert the results to a DataFrame and display it
+        df_results = pd.DataFrame(st.session_state['results'])
+        st.dataframe(df_results)
+        # Generate an Excel file from the DataFrame
+        current_datetime = datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
+        filename = f'responses_{current_datetime}.xlsx'
+        df_results.to_excel(filename, index=False)
+        with open(filename, 'rb') as f:
+            st.download_button(
+                label='Download Excel file',
+                data=f,
+                file_name=filename,
+                mime='application/vnd.ms-excel'
+            )
+    else:
+        st.info('Some files are still processing, please check back later.')
