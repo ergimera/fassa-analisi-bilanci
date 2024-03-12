@@ -3,19 +3,26 @@ import os
 import pandas as pd
 from openai import OpenAI
 import openai
-import time
 from datetime import datetime
 
 
-def process_question(file_path, question, assistantid, client):
-    # Create the file object
-    with open(file_path, "rb") as file_data:
-        file = client.files.create(
-            file=file_data,
-            purpose='assistants'
-        )
-        file_id = file.id
 
+
+uploaded_files = st.file_uploader(
+    "Seleziona i bilanci PDF da analizzare", 
+    type="pdf", 
+    accept_multiple_files=True
+)
+
+
+def process_question(file_object, question, assistantid, client):
+    # Create the file object
+    file = client.files.create(
+        file=file_object,
+        purpose='assistants'
+    )
+    file_id = file.id
+    
     # Create thread message
     thread = client.beta.threads.create(
         messages=[
@@ -27,7 +34,7 @@ def process_question(file_path, question, assistantid, client):
         ]
     )
     thread_id = thread.id
-
+    
     # Execute the run
     run = client.beta.threads.runs.create(
         thread_id=thread_id,
@@ -36,59 +43,83 @@ def process_question(file_path, question, assistantid, client):
         tools=[{"type": "code_interpreter"}, {"type": "retrieval"}]
     )
     run_id = run.id
+    
+    # Initialize or update session state for run status
+    if 'run_status' not in st.session_state:
+        st.session_state['run_status'] = 'not started'
 
-    # Retrieve the run
-    retrieved_run = client.beta.threads.runs.retrieve(
-        thread_id=thread_id,
-        run_id=run_id
-    )
+    # Define a function to check the run status
+    def check_run_status():
+        if 'last_check' not in st.session_state or (datetime.now() - st.session_state['last_check']).seconds > 3:
+            run = client.beta.threads.runs.retrieve(
+                thread_id=thread_id,
+                run_id=run_id
+            )
+            # Update the session state with the latest status
+            st.session_state['run_status'] = run.status
+            # Update the last checked timestamp
+            st.session_state['last_check'] = datetime.now()
+        return st.session_state['run_status']
 
-    # Wait for the run to complete
-    while True:
-        run = client.beta.threads.runs.retrieve(
+    # Check the current run status
+    current_status = check_run_status()
+
+    # If the run is completed, get the resulting message
+    if current_status == "completed":
+        # Retrieve thread messages
+        thread_messages = client.beta.threads.messages.list(thread_id)
+        message_id = thread_messages.first_id  # Verify the attribute name for the first message ID
+        
+        # Retrieve the message object
+        message = client.beta.threads.messages.retrieve(
             thread_id=thread_id,
-            run_id=run_id
+            message_id=message_id
         )
-        if run.status == "completed":
-            break
-        time.sleep(3)  # Wait for 3 seconds before checking again
+        
+        # Presuming that message.content is structured with text and annotations
+        message_content = message.content[0].text
+        
+        # Delete the uploaded file
+        client.files.delete(file_id)
+        
+        # Return the message content as the function output
+        return message_content
+    else:
+        # Prompt the user to check back later for the result
+        st.info('Processing... Please check back in a moment by pressing "Check Status".')
+        return None  # Indicates that the run is not completed yet
 
-    # Retrieve thread messages
-    thread_messages = client.beta.threads.messages.list(thread_id)
-    message_id = thread_messages.first_id  # Need to verify the attribute name for the first message ID
-
-    # Retrieve the message object
-    message = client.beta.threads.messages.retrieve(
-        thread_id=thread_id,
-        message_id=message_id
-    )
-
-    # Presuming that message.content is a list with text and annotations attributes
-    message_content = message.content[0].text
-    client.files.delete(file.id)
-
-    return message_content.value
-
-def process_all_pdfs_to_dataframe(directory_path, question, assistantid, client):
+def process_all_pdfs_to_dataframe(uploaded_files, question, assistantid, client):
+    # Initialize the results list
     results = []
-    for filename in os.listdir(directory_path):
-        if filename.endswith(".pdf"):
-            file_path = os.path.join(directory_path, filename)
-            try:
-                response = process_question(file_path, question, assistantid, client)
+
+    # Loop through each uploaded file object
+    for uploaded_file in uploaded_files:
+        if uploaded_file.name.endswith(".pdf"):
+            # Process the uploaded file
+            response = process_question(uploaded_file, question, assistantid, client)
+
+            # Since processing is asynchronous, we may not receive the response immediately
+            if response is not None:
+                # We have a response; append to the results list
                 results.append({
-                    "File": filename,
+                    "File": uploaded_file.name,
                     "Question": question,
                     "Response": response
                 })
-            except Exception as e:
-                print(f"An error occurred while processing {filename}: {e}")
+            else:
+                # The response is not ready; append a placeholder indicating processing status
                 results.append({
-                    "Società": filename,
-                    "Domanda": question,
-                    "Risposta": "Error: " + str(e)
+                    "File": uploaded_file.name,
+                    "Question": question,
+                    "Response": "Processing..."
                 })
-    return pd.DataFrame(results)
+
+    # Convert the results list into a pandas DataFrame
+    df_results = pd.DataFrame(results)
+
+    # Return the DataFrame
+    return df_results
 
 
 # Streamlit app code
@@ -149,16 +180,29 @@ file_name = concatenate_file_name('responses', formatted_datetime, '.xlsx')
 full_path = combine_path(directory_path, file_name)
 
 
+# Streamlit control for initiating PDF processing
 if st.button('Process PDFs'):
-    if directory_path and question and assistant_id:
-        try:
-            with st.spinner('Processing...'):
-                df_responses = process_all_pdfs_to_dataframe(directory_path, question, assistant_id, client)
+    if uploaded_files and question and assistant_id and api_key:
+        client = OpenAI(api_key=api_key)
+        with st.spinner('Processing...'):
+            df_responses = process_all_pdfs_to_dataframe(uploaded_files, question, assistant_id, client)
             st.dataframe(df_responses)
-            excel_path = full_path
-            df_responses.to_excel(excel_path, index=False)
-            st.success(f'Results saved to {excel_path}')
-        except Exception as e:
-            st.error(f'An error occurred: {e}')
+            # Save responses to an Excel sheet
+            current_datetime = datetime.now().strftime('%Y_%m_%d_%H-%M-%S')
+            file_name = f'responses_{current_datetime}.xlsx'
+            df_responses.to_excel(file_name, index=False)
+            st.success(f'Results saved to {file_name}')
+            # Provide a download link for the Excel file
+            with open(file_name, "rb") as file:
+                st.download_button(
+                    label="Download Excel file",
+                    data=file,
+                    file_name=file_name,
+                    mime="application/vnd.ms-excel"
+                )
     else:
-        st.error('Please fill out all fields before processing.')
+        st.error('Please fill out all fields and upload at least one PDF file before processing.')
+
+# Rerun the app to update the status of the processing
+if st.button('Check Status'):
+    st.experimental_rerun()
