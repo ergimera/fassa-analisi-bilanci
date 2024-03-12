@@ -25,7 +25,6 @@ uploaded_files = st.file_uploader(
     accept_multiple_files=True
 )
 
-
 def process_question(file_object, question, assistantid, client):
     # Create the file object
     file = client.files.create(
@@ -55,50 +54,36 @@ def process_question(file_object, question, assistantid, client):
     )
     run_id = run.id
     
-    # Initialize or update session state for run status
-    if 'run_status' not in st.session_state:
-        st.session_state['run_status'] = 'not started'
-
-    # Define a function to check the run status
-    def check_run_status():
-        if 'last_check' not in st.session_state or (datetime.now() - st.session_state['last_check']).seconds > 3:
-            run = client.beta.threads.runs.retrieve(
-                thread_id=thread_id,
-                run_id=run_id
-            )
-            # Update the session state with the latest status
-            st.session_state['run_status'] = run.status
-            # Update the last checked timestamp
-            st.session_state['last_check'] = datetime.now()
-        return st.session_state['run_status']
-
-    # Check the current run status
-    current_status = check_run_status()
-
-    # If the run is completed, get the resulting message
-    if current_status == "completed":
-        # Retrieve thread messages
-        thread_messages = client.beta.threads.messages.list(thread_id)
-        message_id = thread_messages.first_id  # Verify the attribute name for the first message ID
-        
-        # Retrieve the message object
-        message = client.beta.threads.messages.retrieve(
+    # Retrieve the run
+    retrieved_run = client.beta.threads.runs.retrieve(
+        thread_id=thread_id,
+        run_id=run_id
+    )
+    # Wait for the run to complete
+    while True:
+        run = client.beta.threads.runs.retrieve(
             thread_id=thread_id,
-            message_id=message_id
+            run_id=run_id
         )
-        
-        # Presuming that message.content is structured with text and annotations
-        message_content = message.content[0].text
-        
-        # Delete the uploaded file
-        client.files.delete(file_id)
-        
-        # Return the message content as the function output
-        return message_content
-    else:
-        # Prompt the user to check back later for the result
-        st.info('Processing... Please check back in a moment by pressing "Check Status".')
-        return None  # Indicates that the run is not completed yet
+        if run.status == "completed":
+            break
+        time.sleep(3)  # Wait for 3 seconds before checking again
+      
+    # Retrieve thread messages
+    thread_messages = client.beta.threads.messages.list(thread_id)
+    message_id = thread_messages.first_id  # Need to verify the attribute name for the first message ID
+
+    # Retrieve the message object
+    message = client.beta.threads.messages.retrieve(
+        thread_id=thread_id,
+        message_id=message_id
+    )
+
+    # Presuming that message.content is a list with text and annotations attributes
+    message_content = message.content[0].text
+    client.files.delete(file.id)
+
+    return message_content.value
 
 def process_all_pdfs_to_dataframe(uploaded_files, question, assistantid, client):
     # Initialize the results list
@@ -131,8 +116,6 @@ def process_all_pdfs_to_dataframe(uploaded_files, question, assistantid, client)
 
     # Return the DataFrame
     return df_results
-
-
 
 
 # Define a function to return a string containing the CSS to set the background image
