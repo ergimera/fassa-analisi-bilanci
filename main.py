@@ -6,12 +6,6 @@ import openai
 import time
 from datetime import datetime
 
-openai.organization = "org-ZCInae5ZEKOe41iOgJqcI0i1"
-openai.api_key = "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"
-
-client = OpenAI(
-  api_key=openai.api_key,  # this is also the default, it can be omitted
-)
 
 def process_question(file_path, question, assistantid, client):
     # Create the file object
@@ -124,6 +118,14 @@ st.markdown(css_style, unsafe_allow_html=True)
 directory_path = st.text_input('Seleziona la cartella contentente i bilanci', '')
 question = st.text_area('Inserisci la domanda da porre', 'Sarebbe possibile ottenere un elenco dettagliato della distribuzione dei ricavi, suddiviso per categorie di attività? Vorrei avere informazioni più specifiche su come i ricavi sono ripartiti tra le varie attività o settori')
 assistant_id = st.text_input("Indicare l'Assistant ID", 'asst_tH6OUSI6c6QAS4eXwBnG80a0')
+api_key = st.text_input("Indicare Open AI Key")
+
+openai.organization = "org-ZCInae5ZEKOe41iOgJqcI0i1"
+openai.api_key = api_key
+
+client = OpenAI(
+  api_key=openai.api_key,  # this is also the default, it can be omitted
+)
 
 # Function to get the current date and time
 def get_current_date_time():
