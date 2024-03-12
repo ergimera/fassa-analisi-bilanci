@@ -8,7 +8,6 @@ from datetime import datetime
 # Streamlit app code
 st.title('Analisi PDF Bilanci 📒')
 
-directory_path = st.text_input('Seleziona la cartella contentente i bilanci', '')
 question = st.text_area('Inserisci la domanda da porre', 'Sarebbe possibile ottenere un elenco dettagliato della distribuzione dei ricavi, suddiviso per categorie di attività? Vorrei avere informazioni più specifiche su come i ricavi sono ripartiti tra le varie attività o settori')
 assistant_id = st.text_input("Indicare l'Assistant ID", 'asst_tH6OUSI6c6QAS4eXwBnG80a0')
 api_key = st.text_input("Indicare Open AI Key")
