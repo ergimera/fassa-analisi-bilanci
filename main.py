@@ -156,28 +156,6 @@ css_style = get_background_image_css(background_image_url)
 st.markdown(css_style, unsafe_allow_html=True)
 
 
-# Function to get the current date and time
-def get_current_date_time():
-    return datetime.now()
-
-# Function to format date and time into a string suitable for a file name
-def format_date_time(date_time):
-    return date_time.strftime('%Y_%m_%d_%H-%M-%S')
-
-# Function to concatenate file name components
-def concatenate_file_name(base_name, date_time_str, extension):
-    return f"{base_name}_{date_time_str}{extension}"
-
-# Function to combine directory path and file name
-def combine_path(directory_path, file_name):
-    return os.path.join(directory_path, file_name)
-
-current_datetime = get_current_date_time()
-formatted_datetime = format_date_time(current_datetime)
-file_name = concatenate_file_name('responses', formatted_datetime, '.xlsx')
-full_path = combine_path(directory_path, file_name)
-
-
 # Streamlit control for initiating PDF processing
 if st.button('Process PDFs'):
     if uploaded_files and question and assistant_id and api_key:
