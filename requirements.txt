@@ -1,1 +1,6 @@
-
+streamlit
+os
+pandas
+time
+openai
+datetime
